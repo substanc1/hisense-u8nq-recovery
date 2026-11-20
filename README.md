@@ -117,8 +117,6 @@ On the 65U8NQ the physical button does not trigger USB recovery mode via hold-at
 
 #### ❌ UART via 3.5mm SERVICE port
 
-![3.5mm SERVICE port cable](img/service_port_35mm.jpg)
-
 The TV has a 3.5mm SERVICE port on the back. UART should be accessible here (TIP=TX, RING=RX, SLEEVE=GND). Tested with FT232RL adapter at all standard baud rates: **921600, 460800, 230400, 115200, 57600**. Zero output at all baud rates. UART is disabled in production firmware on MTK9618.
 
 #### ❌ UART via HDMI DDC pins (pins 15 and 16)
