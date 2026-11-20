@@ -8,12 +8,17 @@
 
 ### The Problem
 
-The TV shows a **black screen** after booting (or a boot loop). The remote only works for power on/off. No menu, no picture.
+We were developing a **custom VIDAA launcher** for this TV. During development, the file `/APPS/pkgs/tv.vidaa.app.ui/packageinfo.json` got corrupted — this is the app manifest the VIDAA system uses to register the main UI.
 
-**Root cause:** `/APPS/pkgs/tv.vidaa.app.ui/packageinfo.json` is corrupt or empty.  
-This kills VIDAAcommon → app manager can't register the UI → black screen.
+The result: the TV boots, shows the half-loaded custom launcher interface, then hangs — no menu, no input response. Remote only works for power.
 
-The TV is **NOT fully bricked** — bootloader, kernel and init all load fine. Only the app layer is broken. This is fully recoverable at home with a USB drive.
+**This is NOT a black screen.** The TV boots fully into the broken custom launcher state:
+
+![Bricked custom launcher screen](img/bricked_screen.jpg)
+
+*What we saw after every boot: custom launcher partially loaded, completely frozen*
+
+The TV is **not fully bricked** — bootloader, kernel, and init all run fine. Only the VIDAA app layer is broken. This is fully recoverable at home with a USB drive.
 
 ---
 
@@ -26,30 +31,32 @@ The TV is **NOT fully bricked** — bootloader, kernel and init all load fine. O
 | Project | 76931 |
 | SoC | MediaTek MT9618 (Pentonic 1000) |
 | OS | VIDAA 6.x |
-| Firmware tested | V0000.09.61B / E006 (O0410) |
+| Firmware | V0000.09.61B / E006 (O0410) |
+
+![TV rear label](img/tv_label.jpg)
 
 ---
 
 ### The Fix — USB Firmware Recovery
 
 #### What you need
-- USB flash drive, **≤32 GB** (8–16 GB ideal), USB 2.0 type
+- USB flash drive, **≤32 GB** (8–16 GB ideal)
 - Formatted **FAT32, MBR** (not GPT, not exFAT, not NTFS)
-- The correct firmware package (see below)
+- The correct firmware package for your model
 
 #### Step 1 — Get the firmware
 
 Download `76931_65U85LEVS_Hisense_E006_O0410.zip` (~854 MB) from a Hisense firmware mirror.
 
-The ZIP contains `MTK_9618_EU_G_pkg_20240410.tar.gz` which contains `usb_MTK_9618_EU_G.bin`.
+The ZIP contains `MTK_9618_EU_G_pkg_20240410.tar.gz` → inside is `usb_MTK_9618_EU_G.bin` (894,841,488 bytes).
 
 #### Step 2 — Prepare the USB drive (macOS)
 
 ```bash
-# Replace diskN with your actual disk number (check with: diskutil list)
+# Replace diskN with your actual disk (check: diskutil list)
 diskutil eraseDisk FAT32 HISENSE MBRFormat /dev/diskN
 
-# Prevent macOS metadata files
+# Prevent macOS metadata files from being written
 sudo mdutil -i off /Volumes/HISENSE
 touch /Volumes/HISENSE/.metadata_never_index
 
@@ -58,10 +65,10 @@ unzip -p ~/Downloads/76931_65U85LEVS_Hisense_E006_O0410.zip \
   | tar -xzOf - usb_MTK_9618_EU_G.bin \
   > /Volumes/HISENSE/usb_MTK_9618_EU_G.bin
 
-# Verify (must be exactly 894841488 bytes)
+# Verify file size (must be exactly 894841488 bytes)
 stat -f %z /Volumes/HISENSE/usb_MTK_9618_EU_G.bin
 
-# ⚠️ CRITICAL STEP — rename the file
+# ⚠️ CRITICAL — rename the file, the bootloader requires this exact name
 mv /Volumes/HISENSE/usb_MTK_9618_EU_G.bin /Volumes/HISENSE/Forcedupgrade_001.bin
 
 # Remove macOS hidden files, then eject
@@ -69,70 +76,91 @@ dot_clean -m /Volumes/HISENSE
 sync && diskutil eject /dev/diskN
 ```
 
-> **Why rename?** The bootloader looks for `Forcedupgrade_001.bin`. With the original name the TV completely ignores the USB drive and boots normally — no error, no message.
+> **Why rename?** The bootloader looks for `Forcedupgrade_001.bin`. With the original filename `usb_MTK_9618_EU_G.bin` the TV completely ignores the USB drive and boots straight into the broken launcher — no error, no message.
 
 #### Step 3 — Flash the TV
 
-1. Insert USB into the **left USB port** (USB 2.0 — white color, not the blue USB 3.0)
+![TV back ports](img/tv_back_ports.jpg)
+
+*Back panel: use the USB port on the HDMI side (left when facing the TV)*
+
+1. Insert USB into the **USB port on the same side as the HDMI ports** (labeled USB 1 on this model — this is the port that worked)
 2. Power on the TV normally with the remote
 3. The TV shows a **blue screen: "USB Upgrade — Checking."** with a progress bar
 
 ![USB Upgrade screen](img/usb_upgrade_screen.jpg)
 
+*Success: "USB Upgrade — Checking. 22%" — do not power off*
+
 4. **Do NOT power off. Do NOT remove the USB.** Wait 10–20 minutes.
 5. TV reboots automatically → Hisense logo → first-time setup wizard
 6. Remove USB after the logo appears
-7. Go to Settings → Support → Factory Reset to clean up and verify
+7. Go to Settings → Support → Factory Reset to clean up
 
 ---
 
 ### What We Tried That Did NOT Work
 
-This section is for people who already tried the obvious things.
+This section documents everything we attempted before finding the solution. If you're stuck, this may save you days of work.
 
 #### ❌ USB with original filename (`usb_MTK_9618_EU_G.bin`)
-Bootloader silently ignores it. TV boots to the broken screen as if no USB is inserted. No error. Renaming to `Forcedupgrade_001.bin` is mandatory.
+Bootloader silently ignores it. TV boots to broken launcher as if no USB is present. No error. **Renaming to `Forcedupgrade_001.bin` is mandatory.**
 
 #### ❌ 62 GB USB drive
 Large FAT32 volumes are unreliable with MTK bootloaders. Use ≤32 GB.
 
-#### ❌ Right USB port (blue USB 3.0)
-Bootloader may not enumerate USB 3.0 drives. Use the white USB 2.0 port (left side on this model).
+#### ❌ Other USB port
+Only the USB port on the HDMI side (USB 1) worked. The other port was not accepted by the bootloader.
 
 #### ❌ Physical button hold during power-on
-On the 65U8NQ the physical button does not trigger USB recovery mode via hold. It simply boots the TV directly (bypasses Hisense logo, goes straight to whatever screen loads first).
-
-#### ❌ UART via HDMI DDC pins (pins 15 and 16)
-UART is disabled in production firmware on MTK9618. Tested all standard baud rates: 921600, 460800, 230400, 115200, 57600. Zero output on all.
+On the 65U8NQ the physical button does not trigger USB recovery mode via hold-at-power-on. The button simply boots the TV into whatever it loads first (skips the Hisense logo, goes straight to the broken launcher).
 
 #### ❌ UART via 3.5mm SERVICE port
-Same result — no data at any baud rate. UART disabled in production.
+
+![3.5mm SERVICE port cable](img/service_port_35mm.jpg)
+
+The TV has a 3.5mm SERVICE port on the back. UART should be accessible here (TIP=TX, RING=RX, SLEEVE=GND). Tested with FT232RL adapter at all standard baud rates: **921600, 460800, 230400, 115200, 57600**. Zero output at all baud rates. UART is disabled in production firmware on MTK9618.
+
+#### ❌ UART via HDMI DDC pins (pins 15 and 16)
+
+![JUXIN HDMI Male Plug with screw terminals](img/hdmi_plug_screw_terminal.jpg)
+![HDMI plug pin numbering](img/hdmi_plug_pins.jpg)
+
+We used a JUXIN HDMI Male Plug with screw terminals (no soldering needed) to access individual HDMI pins. Tested pins 15 (DDC Clock) and 16 (DDC SDA) as UART TX/RX candidates with FT232RL adapter:
+
+![FT232RL USB-UART adapter](img/ft232rl_uart_adapter.jpg)
+
+Same result — zero output at any baud rate. UART disabled in production on this model.
+
+**Color coding used (for reference):**  
+🟡 Yellow = RX | 🔵 Blue = TX | ⚫ Black = GND
 
 #### ❌ MQTT commands (port 36669)
-Port accepts connections but VIDAAcommon is dead when `packageinfo.json` is corrupt. All commands are ignored. Tested with both static credentials and dynamically generated tokens.
+Port 36669 accepts TLS connections, but VIDAAcommon is dead when `packageinfo.json` is corrupt. All commands are silently ignored. Tested: launchapp, sendkey, factory_reset, resetLauncher, setprop, exec, reboot — zero responses.
 
 #### ❌ DNS spoof for OTA recovery
-VIDAAcommon not running → HTTP client processes never start → TV makes zero TCP connections to external servers. DNS queries run but no TCP follows.
+VIDAAcommon not running → HTTP client processes never start → TV makes zero TCP connections to external servers. DNS queries run but no TCP follows. VPS was set up, nginx configured — TV never connected.
 
-#### ❌ AirPlay recovery (port 7000)
-Returns 403 on all endpoints. No recovery path.
+#### ❌ AirPlay (port 7000)
+Returns 403 on all endpoints (/pair-setup, /fp-setup, /play).
 
 #### ❌ DIAL (port 3366/3367)
-Discovery XML responds but app launch returns 404 — VIDAAcommon is not registering apps.
+Discovery XML responds, but app launch returns 404 — VIDAAcommon not registering apps.
 
 ---
 
-### Hardware We Bought That Wasn't Needed (for reference)
+### Hardware We Bought That Wasn't Needed
 
-We spent time and money on UART hardware before finding the USB solution:
+We spent money on UART hardware before finding the USB solution. Listed here so others don't repeat this mistake:
 
-| Item | Purpose | Result |
-|------|---------|--------|
-| FT232RL USB-UART adapter (3.3V) | UART console via HDMI or SERVICE port | UART disabled in firmware — no output |
-| HDMI Male Plug with screw terminals | Connect to HDMI DDC pins without soldering | Tried pins 15/16 — no UART signal |
-| Dupont F-F wires | Connections | N/A |
+| Item | Cost (approx) | Why we bought it | Result |
+|------|---------------|-----------------|--------|
+| FT232RL USB-UART adapter (3.3V, TYPE-C) | ~5 USD | UART console via SERVICE port or HDMI | UART disabled in firmware |
+| JUXIN HDMI Male Plug with screw terminals | ~3 USD | Access HDMI pins without soldering | No UART signal on pins 15/16 |
+| Dupont F-F wires (10–20cm pack) | ~1 USD | Connections | Not needed |
 
-**Lesson:** Try USB firmware recovery with the correct filename *first*, before buying any UART hardware.
+**Total wasted: ~$9 and several days.**  
+**Lesson: Try USB firmware recovery with the correct filename *first*, before buying any hardware.**
 
 ---
 
@@ -152,26 +180,32 @@ p42:  /OAD             921 MB  (OTA staging — DO NOT TOUCH)
 ```
 /APPS/pkgs/tv.vidaa.app.ui/packageinfo.json
 ```
+When empty or corrupt → VIDAA app manager cannot register the main UI package → VIDAAcommon fails to start → no ports open → no network recovery possible.
 
-When empty or corrupt → VIDAA app manager cannot register the main UI package → VIDAAcommon fails → black screen.
+#### Why MQTT can't help
+VIDAAcommon registers app packages on boot. Without a valid `packageinfo.json` for `tv.vidaa.app.ui`, VIDAAcommon's command handlers never initialize. The MQTT broker starts (port 36669 is open) but it's a dead socket — no subscriber handlers are registered. Even with valid credentials, every publish is dropped.
 
 ---
 
 ### If USB Recovery Still Doesn't Work
 
-1. **Different USB drive** — try a different brand/size (8–16 GB), some drives don't enumerate correctly
-2. **UART via mainboard test pads** — 3-pad group near MT9618 SoC, 115200 baud 8N1 3.3V. Use U-boot shell to directly edit the broken JSON file on eMMC
-3. **eMMC ISP** — repair shops with Easy-JTAG / UFI box can read/write eMMC in-circuit without desoldering (~$20–60 USD)
+1. **Different USB drive** — try another brand/size (8–16 GB), some drives don't enumerate correctly in the MTK bootloader
+2. **UART via mainboard test pads** — there is a 3-pad group near the MT9618 SoC on the mainboard, 115200 baud 8N1 3.3V. Use U-boot shell to directly edit the broken JSON on eMMC:
+   ```
+   ext4ls mmc 0:41 pkgs/tv.vidaa.app.ui
+   # read working packageinfo from another package, copy format, fix the broken one
+   ```
+3. **eMMC ISP** — a repair shop with Easy-JTAG / UFI box can read/write eMMC in-circuit without desoldering (~$20–60 USD, ~800–2500 UAH)
 
 ---
 
 ### Contributing
 
-If this worked for you on a different Hisense model, open a PR with:
+If this worked on a different Hisense model, open a PR with:
 - TV model and internal name
-- Firmware filename and project number
+- Firmware filename and project number  
 - Which USB port worked
-- Any differences from the steps above
+- Any differences from these steps
 
 ---
 
@@ -179,32 +213,43 @@ If this worked for you on a different Hisense model, open a PR with:
 
 ### Проблема
 
-Телевізор показує **чорний екран** після ввімкнення. Пульт реагує тільки на кнопку живлення. Меню немає.
+Ми розробляли **власний лаунчер для VIDAA** на цьому телевізорі. Під час розробки файл `/APPS/pkgs/tv.vidaa.app.ui/packageinfo.json` пошкодився — це маніфест, через який VIDAA реєструє головний UI.
 
-**Причина:** файл `/APPS/pkgs/tv.vidaa.app.ui/packageinfo.json` порожній або пошкоджений → VIDAAcommon не запускається → чорний екран.
+Результат: телевізор завантажується, показує частково завантажений кастомний лаунчер і зависає. Пульт реагує тільки на кнопку живлення.
+
+**Це не чорний екран.** Телевізор завантажується у зламаний стан кастомного лаунчера (дивись фото вище).
 
 Телевізор **не повністю зламаний** — завантажувач і ядро Linux працюють нормально. Відновлення можливе вдома з флешкою.
 
 ### Рішення — коротко
 
 1. Флешка **≤32 ГБ**, FAT32, MBR
-2. Скопіюй `usb_MTK_9618_EU_G.bin` з архіву прошивки (`76931_65U85LEVS_Hisense_E006_O0410.zip`)
-3. **Перейменуй** файл у `Forcedupgrade_001.bin` — це обов'язково
-4. Вставте у **лівий USB порт** (білий, не синій)
-5. Увімкни телевізор пультом як звичайно
-6. Має з'явитись синій екран **"USB Upgrade — Checking."** з прогрес-баром
-7. Чекай 10–20 хвилин, не вимикай
-
-**Без перейменування** завантажувач ігнорує флешку і телевізор завантажується у зламаний стан — без будь-яких повідомлень про помилку.
+2. Завантаж архів `76931_65U85LEVS_Hisense_E006_O0410.zip`
+3. Розпакуй `usb_MTK_9618_EU_G.bin` на флешку
+4. **Перейменуй** у `Forcedupgrade_001.bin` — ОБОВ'ЯЗКОВО
+5. Вставте у **USB порт з боку HDMI** (USB 1 на цій моделі)
+6. Увімкни телевізор пультом як звичайно
+7. Має з'явитись синій екран **"USB Upgrade — Checking."** з прогрес-баром
+8. Чекай 10–20 хвилин, **не вимикай**
 
 ### Що точно не спрацює
 
-- Оригінальна назва файлу `usb_MTK_9618_EU_G.bin` — ігнорується
+- Оригінальна назва `usb_MTK_9618_EU_G.bin` — ігнорується завантажувачем
 - Флешка >32 ГБ — ненадійна з MTK завантажувачем
-- Правий USB порт (синій USB 3.0) — може не визначатись
+- Інший USB порт — спрацював тільки USB 1 (з боку HDMI)
 - Утримання фізичної кнопки на корпусі — не запускає recovery режим
-- UART через HDMI піни 15/16 (DDC) — UART вимкнено у production прошивці
-- MQTT команди — VIDAAcommon мертвий, всі команди ігноруються
+- UART через SERVICE порт (3.5mm) — UART вимкнено у production прошивці
+- UART через HDMI піни 15/16 (DDC) — теж нічого, нуль даних
+- MQTT команди через порт 36669 — VIDAAcommon мертвий, всі команди ігноруються
+- DNS-спуфінг для OTA — TV не робить TCP-з'єднань коли VIDAAcommon не працює
+
+### Куплене обладнання яке не знадобилось
+
+- **FT232RL USB-UART адаптер** (3.3V, TYPE-C, ~200 грн) — UART вимкнено у прошивці
+- **HDMI Male Plug з клемниками JUXIN** (без паяння, ~120 грн) — сигналу на пінах 15/16 немає
+- **Дроти Dupont** (~50 грн) — не знадобились
+
+**Висновок:** спочатку спробуй USB recovery з правильною назвою файлу, перш ніж купувати будь-яке залізо.
 
 ---
 
@@ -212,40 +257,40 @@ If this worked for you on a different Hisense model, open a PR with:
 
 ### Проблема
 
-Телевизор показывает **чёрный экран** после включения. Пульт реагирует только на кнопку питания. Меню нет.
+Мы разрабатывали **собственный лаунчер для VIDAA** на этом телевизоре. В процессе разработки файл `/APPS/pkgs/tv.vidaa.app.ui/packageinfo.json` повредился — это манифест, через который VIDAA регистрирует главный UI.
 
-**Причина:** файл `/APPS/pkgs/tv.vidaa.app.ui/packageinfo.json` пустой или повреждён → VIDAAcommon не запускается → чёрный экран.
+Результат: телевизор загружается, показывает частично загруженный кастомный лаунчер и зависает. Пульт реагирует только на кнопку питания.
+
+**Это не чёрный экран.** Телевизор загружается в сломанное состояние кастомного лаунчера (см. фото выше).
 
 Телевизор **не полностью сломан** — загрузчик и ядро Linux работают нормально. Восстановление возможно дома с флешкой.
 
-### Решение — кратко
+### Решение — коротко
 
 1. Флешка **≤32 ГБ**, FAT32, MBR
-2. Скопируй `usb_MTK_9618_EU_G.bin` из архива прошивки (`76931_65U85LEVS_Hisense_E006_O0410.zip`)
-3. **Переименуй** файл в `Forcedupgrade_001.bin` — это обязательно
-4. Вставь в **левый USB порт** (белый, не синий)
-5. Включи телевизор пультом как обычно
-6. Должен появиться синий экран **"USB Upgrade — Checking."** с прогресс-баром
-7. Жди 10–20 минут, не выключай
-
-**Без переименования** загрузчик игнорирует флешку и телевизор загружается в сломанное состояние — без каких-либо сообщений об ошибке.
+2. Скачай архив `76931_65U85LEVS_Hisense_E006_O0410.zip`
+3. Распакуй `usb_MTK_9618_EU_G.bin` на флешку
+4. **Переименуй** в `Forcedupgrade_001.bin` — ОБЯЗАТЕЛЬНО
+5. Вставь в **USB порт со стороны HDMI** (USB 1 на этой модели)
+6. Включи телевизор пультом как обычно
+7. Должен появиться синий экран **"USB Upgrade — Checking."** с прогресс-баром
+8. Жди 10–20 минут, **не выключай**
 
 ### Что точно не работает
 
-- Оригинальное имя файла `usb_MTK_9618_EU_G.bin` — игнорируется загрузчиком
-- Флешка >32 ГБ — ненадёжна с MTK загрузчиком  
-- Правый USB порт (синий USB 3.0) — может не определяться
-- Удержание физической кнопки на корпусе при подаче питания — не запускает recovery
-- UART через HDMI пины 15/16 (DDC) — UART отключён в production прошивке
-- MQTT команды через порт 36669 — VIDAAcommon мёртв, все команды игнорируются
+- Оригинальное имя `usb_MTK_9618_EU_G.bin` — игнорируется загрузчиком без каких-либо сообщений
+- Флешка >32 ГБ — ненадёжна с MTK загрузчиком
+- Другой USB порт — сработал только USB 1 (со стороны HDMI)
+- Удержание физической кнопки при подаче питания — не запускает recovery
+- UART через SERVICE порт (3.5mm) — UART отключён в production прошивке
+- UART через HDMI пины 15/16 (DDC) — нуль данных на всех скоростях
+- MQTT команды через порт 36669 — VIDAAcommon мёртв, всё игнорируется
 - DNS-спуфинг для OTA — TV не делает TCP-соединений когда VIDAAcommon не работает
 
 ### Купленное оборудование, которое не понадобилось
 
-Мы потратили время и деньги на UART-оборудование, прежде чем нашли решение с USB:
+- **FT232RL USB-UART адаптер** (3.3V, TYPE-C, ~200 грн) — UART отключён в прошивке
+- **HDMI Male Plug с клеммниками JUXIN** (без пайки, ~120 грн) — сигнала на пинах 15/16 нет
+- **Провода Dupont** (~50 грн) — не понадобились
 
-- **FT232RL USB-UART адаптер** (3.3V) — UART отключён в прошивке, данных нет
-- **HDMI Male Plug с клеммниками** (без пайки) — пробовали пины 15/16, сигнала нет
-- **Провода Dupont** — не понадобились
-
-**Вывод:** сначала попробуй USB recovery с правильным именем файла, прежде чем покупать любое железо.
+**Итог:** сначала попробуй USB recovery с правильным именем файла, прежде чем тратить деньги на оборудование.
