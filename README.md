@@ -46,9 +46,11 @@ The TV is **not fully bricked** — bootloader, kernel, and init all run fine. O
 
 #### Step 1 — Get the firmware
 
-Download `76931_65U85LEVS_Hisense_E006_O0410.zip` (~854 MB) from a Hisense firmware mirror.
+**Direct download (verified):** [76931_65U85LEVS_Hisense_E006_O0410.zip (~854 MB) — Google Drive](https://drive.google.com/file/d/14iirG5aEXPRtbzyhkm0ugyLNpeqfkK0q/view?usp=sharing)
 
 The ZIP contains `MTK_9618_EU_G_pkg_20240410.tar.gz` → inside is `usb_MTK_9618_EU_G.bin` (894,841,488 bytes).
+
+SHA256 of `usb_MTK_9618_EU_G.bin`: `4c3569e27734e8659aec6b8554acab1fbdc0d1e7680abfab2244eea69b3e7c32`
 
 #### Step 2 — Prepare the USB drive (macOS)
 
@@ -222,7 +224,7 @@ If this worked on a different Hisense model, open a PR with:
 ### Рішення — коротко
 
 1. Флешка **≤32 ГБ**, FAT32, MBR
-2. Завантаж архів `76931_65U85LEVS_Hisense_E006_O0410.zip`
+2. Завантаж архів [`76931_65U85LEVS_Hisense_E006_O0410.zip` (~854 МБ) — Google Drive](https://drive.google.com/file/d/14iirG5aEXPRtbzyhkm0ugyLNpeqfkK0q/view?usp=sharing)
 3. Розпакуй `usb_MTK_9618_EU_G.bin` на флешку
 4. **Перейменуй** у `Forcedupgrade_001.bin` — ОБОВ'ЯЗКОВО
 5. Вставте у **USB порт з боку HDMI** (USB 1 на цій моделі)
@@ -266,7 +268,7 @@ If this worked on a different Hisense model, open a PR with:
 ### Решение — коротко
 
 1. Флешка **≤32 ГБ**, FAT32, MBR
-2. Скачай архив `76931_65U85LEVS_Hisense_E006_O0410.zip`
+2. Скачай архив [`76931_65U85LEVS_Hisense_E006_O0410.zip` (~854 МБ) — Google Drive](https://drive.google.com/file/d/14iirG5aEXPRtbzyhkm0ugyLNpeqfkK0q/view?usp=sharing)
 3. Распакуй `usb_MTK_9618_EU_G.bin` на флешку
 4. **Переименуй** в `Forcedupgrade_001.bin` — ОБЯЗАТЕЛЬНО
 5. Вставь в **USB порт со стороны HDMI** (USB 1 на этой модели)
